@@ -185,6 +185,49 @@ test('reads workbooks that use a shared string table', () => {
   assert.equal(template.sections[0].items[0].comments[0].bodyHtml, '<p>Damaged.</p>')
 })
 
+test('handles an export whose columns moved, multiplied or changed wording', () => {
+  // Same format, different file: columns in another order, a reworded
+  // parenthetical hint, a column this importer has never seen, and a comment
+  // type outside the three Spectora documents.
+  const file = workbookWithSharedStrings([
+    ['Comment Text', 'Inspection Area', 'Comment Name', 'Comment Type (info, limit, defect, advisory)', 'Section Name', 'Item Name', 'Sustainability Score'],
+    ['<p>Damaged.</p>', 'Roof surface', 'Damaged', 'defect', 'Roof', 'Coverings', '7'],
+    ['<p>Note.</p>', 'Roof surface', 'Advisory note', 'advisory', 'Roof', 'Coverings', '3'],
+  ])
+
+  const { template, stats, issues } = parseSpectoraExport(file, 'reordered.xlsx')
+
+  assert.equal(stats.commentCount, 2)
+  assert.equal(stats.mappedRowCount + stats.unmappedRowCount, stats.sourceRowCount)
+
+  const comments = template.sections[0].items[0].comments
+  // An unrecognised comment type must not abort the import, and sorts after
+  // the types we know rather than being dropped or renamed.
+  assert.deepEqual(comments.map((comment) => comment.commentType), ['defect', 'advisory'])
+  assert.equal(comments[0].bodyHtml, '<p>Damaged.</p>')
+
+  // Unknown columns are reported and their values kept on the comment.
+  assert.ok(issues.some((issue) => issue.sourceColumn === 'Sustainability Score'))
+  assert.equal(comments[0].rawExtras['Sustainability Score'], '7')
+  assert.equal(comments[0].rawExtras['Inspection Area'], 'Roof surface')
+})
+
+test('classifies a column by what the file holds, not by its name', () => {
+  // The photo columns are empty in both committed exports. In a file that
+  // uses them they are data we do not model, not data that was never there.
+  const file = workbookWithSharedStrings([
+    ['Section Name', 'Item Name', 'Comment Name', 'Comment Text', 'Default Photo 1'],
+    ['Roof', 'Coverings', 'Damaged', '<p>a</p>', 'https://example.com/1.jpg'],
+    ['Roof', 'Coverings', 'Worn', '<p>b</p>', 'https://example.com/2.jpg'],
+  ])
+
+  const issue = parseSpectoraExport(file, 'with-photos.xlsx').issues.find(
+    (candidate) => candidate.sourceColumn === 'Default Photo 1',
+  )
+
+  assert.equal(issue?.kind, 'unsupported_by_importer')
+})
+
 test('rejects a spreadsheet that is not a template export', () => {
   const file = workbookWithSharedStrings([
     ['Invoice Number', 'Client', 'Amount'],
