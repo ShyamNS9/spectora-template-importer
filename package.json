@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test lib/spectora/*.test.ts",
+    "typecheck": "next typegen && tsc --noEmit",
+    "inspect-export": "tsx scripts/inspect-export.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.1",

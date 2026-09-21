@@ -58,6 +58,10 @@ create table comments (
   recommendation text,
   -- Spectora documents this as -1 low / 0 medium / 1 high.
   severity       smallint,
+  -- Pre-selects the comment when a report is started. Rare in stock templates
+  -- but it is a deliberate choice by whoever tuned the template, so it is
+  -- modelled rather than treated as vendor metadata.
+  default_value  text,
 
   choice_options text[] not null default '{}',
   unit_options   text[] not null default '{}',
