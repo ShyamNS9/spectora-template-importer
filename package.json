@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test lib/spectora/*.test.ts",
+    "test": "tsx --env-file-if-exists=.env.local --test lib/spectora/*.test.ts lib/db/*.test.ts",
     "typecheck": "next typegen && tsc --noEmit",
-    "inspect-export": "tsx scripts/inspect-export.ts"
+    "migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "inspect-export": "tsx scripts/inspect-export.ts",
+    "seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "verify": "tsx --env-file=.env.local scripts/verify-import.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.1",

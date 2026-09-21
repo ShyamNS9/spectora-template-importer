@@ -1,6 +1,6 @@
 import { decodeEntitiesOnce } from './entities'
 import { locateColumns, MAPPED_COLUMNS, REQUIRED_COLUMNS, type MappedColumn } from './columns'
-import { readFirstSheet, UnreadableFileError } from './xlsx'
+import { readFirstSheet } from './xlsx'
 import type {
   ImportIssue,
   ImportIssueKind,

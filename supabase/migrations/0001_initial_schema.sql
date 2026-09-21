@@ -188,9 +188,10 @@ create trigger comments_set_updated_at before update on comments
 
 
 -- The app has no end-user login, so no browser ever holds a database
--- credential: every read and write goes through the Next.js server using the
--- service role key. RLS is enabled with no policies so that the anon key,
--- if it ever leaked, grants nothing. The service role bypasses RLS by design.
+-- credential: every read and write goes through the Next.js server over a
+-- direct Postgres connection. RLS is enabled with no policies at all, so if
+-- the project's REST API were ever turned on, it would expose nothing. The
+-- owning role used by the server is unaffected, as it bypasses RLS.
 alter table templates     enable row level security;
 alter table sections      enable row level security;
 alter table items         enable row level security;
