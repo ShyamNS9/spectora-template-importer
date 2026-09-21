@@ -3,6 +3,10 @@
 Imports a Spectora HTML-text template export into a structured, editable
 template, and reports exactly what happened to the file on the way in.
 
+**Live: https://spectora-template-importer-six.vercel.app** — no login. It
+opens on two already-imported templates; each has an import summary linked
+from its row.
+
 Built for the Hive Inspect Forward Deployed Engineer take-home. See
 [NOTES.md](NOTES.md) for the decisions, the limits, and what was left out.
 
