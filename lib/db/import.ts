@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type { TransactionSql } from 'postgres'
 import { db } from './client'
-import type { ImportIssue, ParseResult } from '../spectora/types'
+import type { ImportIssue, ImportIssueKind, IssueSeverity, ParseResult } from '../spectora/types'
 
 /** Rows are sent in batches so a large template does not build one enormous statement. */
 const INSERT_BATCH = 500
@@ -115,4 +115,91 @@ async function insertIssues(tx: TransactionSql, importRunId: string, issues: Imp
   for (let i = 0; i < rows.length; i += INSERT_BATCH) {
     await tx`insert into import_issues ${tx(rows.slice(i, i + INSERT_BATCH))}`
   }
+}
+
+export type ImportRunRow = {
+  id: string
+  templateId: string
+  templateName: string
+  fileName: string
+  fileSha256: string
+  fileBytes: number
+  sourceRowCount: number
+  mappedRowCount: number
+  unmappedRowCount: number
+  sourceColumnCount: number
+  mappedColumnCount: number
+  sectionCount: number
+  itemCount: number
+  commentCount: number
+  createdAt: Date
+}
+
+export type ImportIssueRow = {
+  id: string
+  kind: ImportIssueKind
+  severity: IssueSeverity
+  sourceColumn: string | null
+  sourceRow: number | null
+  affectedCount: number
+  message: string
+  sample: string | null
+}
+
+/**
+ * The import summary for a template, still readable long after the upload.
+ *
+ * Hive's importer discards its job record within minutes, which leaves an
+ * inspector no way to find out later what an import did. Keeping the run and
+ * its notes alongside the template is most of the value here.
+ */
+export async function loadImportRun(
+  templateId: string,
+): Promise<{ run: ImportRunRow; issues: ImportIssueRow[] } | null> {
+  const sql = db()
+
+  const [run] = await sql<ImportRunRow[]>`
+    select
+      r.id,
+      r.template_id         as "templateId",
+      t.name                as "templateName",
+      r.file_name           as "fileName",
+      r.file_sha256         as "fileSha256",
+      r.file_bytes          as "fileBytes",
+      r.source_row_count    as "sourceRowCount",
+      r.mapped_row_count    as "mappedRowCount",
+      r.unmapped_row_count  as "unmappedRowCount",
+      r.source_column_count as "sourceColumnCount",
+      r.mapped_column_count as "mappedColumnCount",
+      r.section_count       as "sectionCount",
+      r.item_count          as "itemCount",
+      r.comment_count       as "commentCount",
+      r.created_at          as "createdAt"
+    from import_runs r
+    join templates t on t.id = r.template_id
+    where r.template_id = ${templateId}
+    order by r.created_at desc
+    limit 1
+  `
+  if (!run) return null
+
+  const issues = await sql<ImportIssueRow[]>`
+    select
+      id,
+      kind,
+      severity,
+      source_column  as "sourceColumn",
+      source_row     as "sourceRow",
+      affected_count as "affectedCount",
+      message,
+      sample
+    from import_issues
+    where import_run_id = ${run.id}
+    order by
+      case severity when 'error' then 0 when 'warning' then 1 else 2 end,
+      affected_count desc,
+      id
+  `
+
+  return { run, issues }
 }

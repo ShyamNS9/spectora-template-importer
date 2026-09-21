@@ -60,10 +60,105 @@ export async function listTemplates(): Promise<TemplateSummary[]> {
   `
 }
 
+export type TemplateOutline = TemplateRow & {
+  sections: { id: string; name: string; position: number; commentCount: number }[]
+  commentCount: number
+}
+
+/**
+ * The template with its section names and counts, but no comment bodies.
+ *
+ * The editor shows one section at a time, and fetching a 798-comment template
+ * in full to render twenty of them means moving every comment's HTML and
+ * every unmapped column value across the network on each navigation.
+ */
+export async function loadTemplateOutline(id: string): Promise<TemplateOutline | null> {
+  const sql = db()
+
+  // Independent of each other, and the database is a round trip away.
+  const [[template], sections] = await Promise.all([
+    sql<TemplateRow[]>`
+      select
+        t.id,
+        t.name,
+        t.source_file_name as "sourceFileName",
+        t.copied_from_id   as "copiedFromId",
+        original.name      as "copiedFromName",
+        t.created_at       as "createdAt",
+        t.updated_at       as "updatedAt"
+      from templates t
+      left join templates original on original.id = t.copied_from_id
+      where t.id = ${id}
+    `,
+    sql<{ id: string; name: string; position: number; commentCount: number }[]>`
+      select
+        s.id,
+        s.name,
+        s.position,
+        count(c.id)::int as "commentCount"
+      from sections s
+      left join items i    on i.section_id = s.id
+      left join comments c on c.item_id = i.id
+      where s.template_id = ${id}
+      group by s.id
+      order by s.position, s.id
+    `,
+  ])
+  if (!template) return null
+
+  return {
+    ...template,
+    sections,
+    commentCount: sections.reduce((total, section) => total + section.commentCount, 0),
+  }
+}
+
+/** The items and comments of one section, for the editor's main pane. */
+export async function loadSection(sectionId: string): Promise<ItemRow[]> {
+  const sql = db()
+
+  const items = await sql<{ id: string; name: string; position: number }[]>`
+    select id, name, position from items
+    where section_id = ${sectionId}
+    order by position, id
+  `
+  if (items.length === 0) return []
+
+  const comments = await sql<(CommentRow & { itemId: string })[]>`
+    select
+      c.id,
+      c.item_id        as "itemId",
+      c.name,
+      c.body_html      as "bodyHtml",
+      c.comment_type   as "commentType",
+      c.answer_type    as "answerType",
+      c.recommendation,
+      c.severity,
+      c.default_value  as "defaultValue",
+      c.choice_options as "choiceOptions",
+      c.unit_options   as "unitOptions",
+      c.position,
+      c.source_row     as "sourceRow",
+      c.raw_extras     as "rawExtras"
+    from comments c
+    where c.item_id in ${sql(items.map((item) => item.id))}
+    order by c.position, c.id
+  `
+
+  const byItem = new Map<string, CommentRow[]>()
+  for (const { itemId, ...comment } of comments) {
+    const list = byItem.get(itemId) ?? []
+    list.push(comment)
+    byItem.set(itemId, list)
+  }
+
+  return items.map((item) => ({ ...item, comments: byItem.get(item.id) ?? [] }))
+}
+
 /**
  * Loads a whole template in three queries rather than one per section and
- * item, then assembles the tree in memory. A template of a few hundred
- * comments is small; the query count is what would hurt.
+ * item, then assembles the tree in memory. Used by the verification script,
+ * which has to compare every comment against the source file.
  */
 export async function loadTemplate(id: string): Promise<TemplateTree | null> {
   const sql = db()
